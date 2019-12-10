@@ -1,10 +1,7 @@
 package day7
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -24,15 +21,7 @@ func readInput() []int {
 	return intList
 }
 
-// ProgramChannelMessage - Struct for communication between Go routines running our custom emulator
-type ProgramChannelMessage struct {
-	id      string
-	content string
-}
-
-func runProgram(program []int, programCounter int, writter io.Writer, reader io.Reader) []int {
-	bufferReader := bufio.NewReader(reader)
-
+func runProgram(program []int, programCounter int, inputChannel chan string, outputChannel chan string) []int {
 	for {
 		opcodeString := fmt.Sprintf("%05d", program[programCounter])
 
@@ -55,8 +44,9 @@ func runProgram(program []int, programCounter int, writter io.Writer, reader io.
 		}
 
 		if opcodeString[3:] == "03" {
-			text, _ := bufferReader.ReadString('\n')
-			value, _ := strconv.Atoi(strings.Trim(text, "\n"))
+			message := <-inputChannel
+
+			value, _ := strconv.Atoi(strings.Trim(message, "\n"))
 
 			program[program[programCounter+1]] = value
 
@@ -64,7 +54,8 @@ func runProgram(program []int, programCounter int, writter io.Writer, reader io.
 		}
 
 		if opcodeString[3:] == "04" {
-			fmt.Fprintln(writter, getValueWithMode(program, program[programCounter+1], string(opcodeString[2])))
+			value := fmt.Sprintln(getValueWithMode(program, program[programCounter+1], string(opcodeString[2])))
+			outputChannel <- value
 
 			programCounter += 2
 		}
@@ -160,15 +151,59 @@ func getMaximumAmplifiedSignal(program []int) int {
 		input := "0"
 
 		for _, phase := range phaseSettings {
-			var writter *bytes.Buffer = bytes.NewBufferString("")
-			var reader *strings.Reader = strings.NewReader(fmt.Sprintf("%d\n%s\n", phase, input))
+			inputChannel := make(chan string)
+			outputChannel := make(chan string)
+			go runProgram(cloneArray(program), 0, inputChannel, outputChannel)
 
-			runProgram(program, 0, writter, reader)
-
-			input = strings.Trim(writter.String(), "\n")
+			inputChannel <- strconv.Itoa(phase)
+			inputChannel <- input
+			message := <-outputChannel
+			input = strings.Trim(message, "\n")
 		}
 
 		x, _ := strconv.Atoi(input)
+		if x > maxInput {
+			maxInput = x
+		}
+	}
+
+	return maxInput
+}
+
+func getMaximumAmplifiedSignalWithFeedbackLoop(program []int) int {
+	permutations := [][]int{}
+	getPermutationsWithHeapsAlgorithm(5, []int{5, 6, 7, 8, 9}, &permutations)
+
+	maxInput := 0
+	for _, phaseSettings := range permutations {
+		input := "0"
+
+		var inputChannels []chan string
+
+		for range phaseSettings {
+			inputChannel := make(chan string)
+			inputChannels = append(inputChannels, inputChannel)
+		}
+		inputChannels = append(inputChannels, make(chan string))
+
+		for index, phase := range phaseSettings {
+			go runProgram(cloneArray(program), 0, inputChannels[index], inputChannels[index+1])
+			inputChannels[index] <- strconv.Itoa(phase)
+		}
+
+		inputChannels[0] <- input
+
+	loop:
+		for {
+			input = <-inputChannels[len(phaseSettings)]
+			select {
+			case inputChannels[0] <- strings.Trim(input, "\n"):
+			default:
+				break loop
+			}
+		}
+
+		x, _ := strconv.Atoi(strings.Trim(input, "\n"))
 		if x > maxInput {
 			maxInput = x
 		}
