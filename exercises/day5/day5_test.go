@@ -69,7 +69,7 @@ func TestSolvePart2Input(t *testing.T) {
 	output := writter.String()
 	fmt.Println(output)
 
-	if !strings.Contains(output, "7988899") {
-		t.Error("runProgram does not contain the value 7988899")
+	if !strings.Contains(output, "13758663") {
+		t.Error("runProgram does not contain the value 13758663")
 	}
 }
